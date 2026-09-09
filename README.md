@@ -1,2 +1,3 @@
 # Commander GCody
-<img width="500" height="500" alt="Commander_GCody" src="https://github.com/user-attachments/assets/1ba65908-a17a-4efd-b9c6-96ffce91c96f" />
+<img width="1984" height="992" alt="Commander_GCody" src="https://github.com/user-attachments/assets/74d623a8-698c-4dfa-9c33-9950b6273ef5" />
+
