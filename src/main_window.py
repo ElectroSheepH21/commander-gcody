@@ -1,4 +1,5 @@
-from PySide6.QtGui import QFont, QFontDatabase
+from pathlib import Path
+from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -16,6 +17,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Commander GCody")
+        icon = Path(__file__).resolve().parents[1] / "res" / "app.ico"
+        if icon.exists():
+            self.setWindowIcon(QIcon(str(icon)))
         self.resize(1050, 650)
 
         root = QWidget()
