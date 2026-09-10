@@ -9,7 +9,8 @@
     "text": {
         "content": "Hello\nThere",
         "font_family": "Times New Roman",
-        "font_size_mm": 69.0
+        "font_size_mm": 69.0,
+        "mode": "Outline"
     },
     "machine": {
         "plunge_depth_mm": 0.5,
@@ -21,6 +22,6 @@
     },
     "window": {
         "width": 1180,
-        "height": 858
+        "height": 890
     }
 }
