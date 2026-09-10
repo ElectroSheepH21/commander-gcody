@@ -65,9 +65,13 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.font_combo.setCurrentIndex(index)
         self.font_size_spin = self._spin(1.0, 500.0, 20.0)
+        
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Outline", "Centerline"])
         text_form.addRow("Text:", self.text_edit)
         text_form.addRow("Font:", self.font_combo)
         text_form.addRow("Font size:", self.font_size_spin)
+        text_form.addRow("Toolpath:", self.mode_combo)
 
         machine = QGroupBox("Machine / Z axis")
         machine_form = QFormLayout(machine)
@@ -173,6 +177,8 @@ class MainWindow(QMainWindow):
         self.text_edit.textChanged.connect(self.update_preview)
         self.font_combo.currentTextChanged.connect(self.update_preview)
         self.font_size_spin.valueChanged.connect(self.update_preview)
+        
+        self.mode_combo.currentTextChanged.connect(self.update_preview)
 
         self.plunge_spin.valueChanged.connect(self.update_preview)
         self.lift_spin.valueChanged.connect(self.update_preview)
@@ -256,6 +262,7 @@ class MainWindow(QMainWindow):
             self.text_edit.toPlainText(),
             self.font_combo.currentText(),
             self.font_size_spin.value(),
+            self.mode_combo.currentText(),
         )
         bounds = self.preview.text_bounds
         self.text_width_label.setText(f"{bounds.width():.2f} mm")
@@ -327,6 +334,7 @@ class MainWindow(QMainWindow):
                 "content": self.text_edit.toPlainText(),
                 "font_family": self.font_combo.currentText(),
                 "font_size_mm": self.font_size_spin.value(),
+                "mode": self.mode_combo.currentText(),
             },
             "machine": {
                 "plunge_depth_mm": self.plunge_spin.value(),
@@ -409,6 +417,10 @@ class MainWindow(QMainWindow):
             self.accel_spin.setValue(
                 int(machine.get("accel_mm_s2", self.accel_spin.value()))
             )
+            saved_mode = str(text.get("mode", self.mode_combo.currentText()))
+            mode_index = self.mode_combo.findText(saved_mode)
+            if mode_index >= 0:
+                self.mode_combo.setCurrentIndex(mode_index)
 
             self.resize(
                 max(500, int(window.get("width", self.width()))),
