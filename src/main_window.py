@@ -65,14 +65,21 @@ class MainWindow(QMainWindow):
 
         for spin in (self.width_spin, self.height_spin, self.thickness_spin):
             spin.valueChanged.connect(self.update_preview)
+            
+        self.text_edit.textChanged.connect(self.update_preview)
+        self.font_combo.currentTextChanged.connect(self.update_preview)
+        self.font_size_spin.valueChanged.connect(self.update_preview)
 
         self.update_preview()
-        
+
     def update_preview(self):
-        self.preview.set_board(
+        self.preview.set_data(
             self.width_spin.value(),
             self.height_spin.value(),
             self.thickness_spin.value(),
+            self.text_edit.text(),
+            self.font_combo.currentText(),
+            self.font_size_spin.value(),
         )
 
     @staticmethod
