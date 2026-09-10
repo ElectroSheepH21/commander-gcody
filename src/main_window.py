@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QVBoxLayout,
     QWidget,
+    QLabel
 )
 
 from board_preview import BoardPreview
@@ -74,9 +75,23 @@ class MainWindow(QMainWindow):
         machine_form.addRow("XY feed rate:", self.xy_feed_spin)
         machine_form.addRow("Z feed rate:", self.z_feed_spin)
 
+        info = QGroupBox("Calculated values")
+        info_form = QFormLayout(info)
+        self.text_width_label = QLabel("-")
+        self.text_height_label = QLabel("-")
+        self.range_label = QLabel("-")
+        self.z_label = QLabel("-")
+        self.fit_label = QLabel("-")
+        info_form.addRow("Text width:", self.text_width_label)
+        info_form.addRow("Text height:", self.text_height_label)
+        info_form.addRow("G-code range:", self.range_label)
+        info_form.addRow("Z down / up:", self.z_label)
+        info_form.addRow("Fits on board:", self.fit_label)
+
         col.addWidget(board)
         col.addWidget(text)
         col.addWidget(machine)
+        col.addWidget(info)
         col.addStretch()
 
         layout.addWidget(controls)
@@ -91,6 +106,9 @@ class MainWindow(QMainWindow):
         self.font_combo.currentTextChanged.connect(self.update_preview)
         self.font_size_spin.valueChanged.connect(self.update_preview)
 
+        self.plunge_spin.valueChanged.connect(self.update_preview)
+        self.lift_spin.valueChanged.connect(self.update_preview)
+
         self.update_preview()
 
     def update_preview(self):
@@ -102,6 +120,39 @@ class MainWindow(QMainWindow):
             self.font_combo.currentText(),
             self.font_size_spin.value(),
         )
+        bounds = self.preview.text_bounds
+        self.text_width_label.setText(f"{bounds.width():.2f} mm")
+        self.text_height_label.setText(f"{bounds.height():.2f} mm")
+
+        half_w = bounds.width() / 2.0
+        half_h = bounds.height() / 2.0
+        self.range_label.setText(
+            f"X={-half_w:.2f}..{half_w:.2f}, Y={-half_h:.2f}..{half_h:.2f} mm"
+        )
+
+        thickness = self.thickness_spin.value()
+        plunge = self.plunge_spin.value()
+        z_down = thickness - plunge
+        z_up = thickness + self.lift_spin.value()
+        self.z_label.setText(f"{z_down:.2f} / {z_up:.2f} mm")
+
+        fits = (
+            bounds.width() <= self.width_spin.value()
+            and bounds.height() <= self.height_spin.value()
+        )
+
+        if plunge > thickness:
+            self.fit_label.setText("Plunge deeper than board")
+            self.fit_label.setStyleSheet("color: red; font-weight: bold;")
+        elif not self.text_edit.toPlainText().strip():
+            self.fit_label.setText("No text")
+            self.fit_label.setStyleSheet("color: red; font-weight: bold;")
+        elif fits:
+            self.fit_label.setText("Yes")
+            self.fit_label.setStyleSheet("color: green; font-weight: bold;")
+        else:
+            self.fit_label.setText("No – text is too large")
+            self.fit_label.setStyleSheet("color: red; font-weight: bold;")
 
     @staticmethod
     def _spin(minimum, maximum, value):
