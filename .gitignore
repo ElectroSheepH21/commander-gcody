@@ -221,3 +221,8 @@ __marimo__/
 configs/*
 !configs/examples/
 !configs/examples/**
+
+# G-code files
+gcodes/*
+!gcodes/examples/
+!gcodes/examples/**

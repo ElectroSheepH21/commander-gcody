@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from board_preview import BoardPreview
+from gcode import flatten_path, generate_gcode
 
 
 class MainWindow(QMainWindow):
@@ -91,11 +92,13 @@ class MainWindow(QMainWindow):
         info_form.addRow("G-code range:", self.range_label)
         info_form.addRow("Z down / up:", self.z_label)
         info_form.addRow("Fits on board:", self.fit_label)
-        
+
         self.save_config_button = QPushButton("Save configuration...")
         self.save_config_button.clicked.connect(self.save_config)
         self.load_config_button = QPushButton("Load configuration...")
         self.load_config_button.clicked.connect(self.load_config)
+        self.export_button = QPushButton("Save G-code...")
+        self.export_button.clicked.connect(self.export_gcode)
 
         col.addWidget(board)
         col.addWidget(text)
@@ -103,6 +106,7 @@ class MainWindow(QMainWindow):
         col.addWidget(info)
         col.addWidget(self.save_config_button)
         col.addWidget(self.load_config_button)
+        col.addWidget(self.export_button)
         col.addStretch()
 
         layout.addWidget(controls)
@@ -164,7 +168,15 @@ class MainWindow(QMainWindow):
         else:
             self.fit_label.setText("No – text is too large")
             self.fit_label.setStyleSheet("color: red; font-weight: bold;")
-            
+
+        can_export = (
+            plunge <= thickness
+            and bool(self.text_edit.toPlainText().strip())
+            and fits
+            and not self.preview.text_path.isEmpty()
+        )
+        self.export_button.setEnabled(can_export)
+
     def get_config(self):
         return {
             "format": "commander_gcody_config",
@@ -193,7 +205,8 @@ class MainWindow(QMainWindow):
 
     def apply_config(self, config):
         if config.get("format") != "commander_gcody_config":
-            raise ValueError("This file is not a Commander GCody configuration.")
+            raise ValueError(
+                "This file is not a Commander GCody configuration.")
 
         board = config.get("board", {})
         text = config.get("text", {})
@@ -216,8 +229,10 @@ class MainWindow(QMainWindow):
             widget.blockSignals(True)
 
         try:
-            self.width_spin.setValue(float(board.get("width_mm", self.width_spin.value())))
-            self.height_spin.setValue(float(board.get("height_mm", self.height_spin.value())))
+            self.width_spin.setValue(
+                float(board.get("width_mm", self.width_spin.value())))
+            self.height_spin.setValue(
+                float(board.get("height_mm", self.height_spin.value())))
             self.thickness_spin.setValue(
                 float(board.get("thickness_mm", self.thickness_spin.value()))
             )
@@ -226,7 +241,8 @@ class MainWindow(QMainWindow):
                 str(text.get("content", self.text_edit.toPlainText()))
             )
 
-            saved_font = str(text.get("font_family", self.font_combo.currentText()))
+            saved_font = str(
+                text.get("font_family", self.font_combo.currentText()))
             font_index = self.font_combo.findText(saved_font)
             if font_index >= 0:
                 self.font_combo.setCurrentIndex(font_index)
@@ -275,10 +291,12 @@ class MainWindow(QMainWindow):
                 encoding="utf-8",
             )
         except OSError as exc:
-            QMessageBox.critical(self, "Error", f"Could not save configuration:\n{exc}")
+            QMessageBox.critical(
+                self, "Error", f"Could not save configuration:\n{exc}")
             return
 
-        QMessageBox.information(self, "Saved", f"Configuration saved:\n{filename}")
+        QMessageBox.information(
+            self, "Saved", f"Configuration saved:\n{filename}")
 
     def load_config(self):
         filename, _ = QFileDialog.getOpenFileName(
@@ -294,10 +312,79 @@ class MainWindow(QMainWindow):
             config = json.loads(Path(filename).read_text(encoding="utf-8"))
             self.apply_config(config)
         except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
-            QMessageBox.critical(self, "Error", f"Could not load configuration:\n{exc}")
+            QMessageBox.critical(
+                self, "Error", f"Could not load configuration:\n{exc}")
             return
 
-        QMessageBox.information(self, "Loaded", f"Configuration loaded:\n{filename}")
+        QMessageBox.information(
+            self, "Loaded", f"Configuration loaded:\n{filename}")
+
+    def build_gcode(self):
+        if self.preview.text_path.isEmpty():
+            raise ValueError("No valid text.")
+
+        bounds = self.preview.text_bounds
+        fits = (
+            bounds.width() <= self.width_spin.value()
+            and bounds.height() <= self.height_spin.value()
+        )
+        if not fits:
+            raise ValueError("Text does not fit on the board.")
+
+        thickness = self.thickness_spin.value()
+        plunge = self.plunge_spin.value()
+        if plunge > thickness:
+            raise ValueError("Plunge depth is larger than board thickness.")
+
+        z_down = thickness - plunge
+        z_up = thickness + self.lift_spin.value()
+        offset_x = -bounds.width() / 2.0
+        offset_y = -bounds.height() / 2.0
+
+        comments = [
+            "; Generated by Commander GCody",
+            f"; Board: {self.width_spin.value():.3f} x "
+            f"{self.height_spin.value():.3f} x {thickness:.3f} mm",
+            f"; Text: {self.text_edit.toPlainText().replace(chr(10), ' / ')}",
+            f"; Font: {self.font_combo.currentText()}",
+            f"; Text bounding box: {bounds.width():.3f} x {bounds.height():.3f} mm",
+            f"; Board surface Z: {thickness:.3f} mm",
+            f"; Plunge depth: {plunge:.3f} mm",
+            f"; Z down: {z_down:.3f} mm",
+            f"; Z up: {z_up:.3f} mm",
+            "; XY origin: center of board/text",
+            "",
+        ]
+
+        return generate_gcode(
+            toolpaths=flatten_path(self.preview.text_path),
+            offset_x=offset_x,
+            offset_y=offset_y,
+            z_down=z_down,
+            z_up=z_up,
+            feed_xy=self.xy_feed_spin.value(),
+            feed_z=self.z_feed_spin.value(),
+            comments=comments,
+        )
+
+    def export_gcode(self):
+        try:
+            gcode = self.build_gcode()
+        except ValueError as exc:
+            QMessageBox.warning(self, "G-code", str(exc))
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save G-code",
+            "text_plot.gcode",
+            "G-code (*.gcode *.nc);;All files (*.*)",
+        )
+        if not filename:
+            return
+
+        Path(filename).write_text(gcode, encoding="utf-8")
+        QMessageBox.information(self, "Saved", f"G-code saved:\n{filename}")
 
     @staticmethod
     def _spin(minimum, maximum, value):
