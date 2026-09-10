@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from board_preview import BoardPreview
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -57,7 +59,21 @@ class MainWindow(QMainWindow):
         col.addStretch()
 
         layout.addWidget(controls)
-        layout.addWidget(QWidget(), 1)
+        self.preview = BoardPreview()
+        layout.addWidget(controls)
+        layout.addWidget(self.preview, 1)
+
+        for spin in (self.width_spin, self.height_spin, self.thickness_spin):
+            spin.valueChanged.connect(self.update_preview)
+
+        self.update_preview()
+        
+    def update_preview(self):
+        self.preview.set_board(
+            self.width_spin.value(),
+            self.height_spin.value(),
+            self.thickness_spin.value(),
+        )
 
     @staticmethod
     def _spin(minimum, maximum, value):
