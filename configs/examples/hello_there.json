@@ -9,16 +9,19 @@
     "text": {
         "content": "Hello\nThere",
         "font_family": "Times New Roman",
-        "font_size_mm": 69.0
+        "font_size_mm": 69.0,
+        "mode": "Outline"
     },
     "machine": {
         "plunge_depth_mm": 0.5,
         "lift_above_surface_mm": 5.0,
         "xy_feed_mm_min": 1200,
-        "z_feed_mm_min": 300
+        "z_feed_mm_min": 300,
+        "rapid_feed_mm_min": 3000,
+        "accel_mm_s2": 500
     },
     "window": {
         "width": 1180,
-        "height": 740
+        "height": 890
     }
 }
