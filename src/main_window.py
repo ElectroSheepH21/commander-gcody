@@ -2,6 +2,7 @@ from pathlib import Path
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
+    QSpinBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
@@ -54,8 +55,26 @@ class MainWindow(QMainWindow):
         text_form.addRow("Font:", self.font_combo)
         text_form.addRow("Font size:", self.font_size_spin)
 
+        machine = QGroupBox("Machine / Z axis")
+        machine_form = QFormLayout(machine)
+        self.plunge_spin = self._spin(0.0, 100.0, 0.5)
+        self.lift_spin = self._spin(0.1, 100.0, 5.0)
+        self.xy_feed_spin = QSpinBox()
+        self.xy_feed_spin.setRange(1, 50000)
+        self.xy_feed_spin.setValue(1200)
+        self.xy_feed_spin.setSuffix(" mm/min")
+        self.z_feed_spin = QSpinBox()
+        self.z_feed_spin.setRange(1, 50000)
+        self.z_feed_spin.setValue(300)
+        self.z_feed_spin.setSuffix(" mm/min")
+        machine_form.addRow("Plunge depth:", self.plunge_spin)
+        machine_form.addRow("Lift above surface:", self.lift_spin)
+        machine_form.addRow("XY feed rate:", self.xy_feed_spin)
+        machine_form.addRow("Z feed rate:", self.z_feed_spin)
+
         col.addWidget(board)
         col.addWidget(text)
+        col.addWidget(machine)
         col.addStretch()
 
         layout.addWidget(controls)
@@ -65,7 +84,7 @@ class MainWindow(QMainWindow):
 
         for spin in (self.width_spin, self.height_spin, self.thickness_spin):
             spin.valueChanged.connect(self.update_preview)
-            
+
         self.text_edit.textChanged.connect(self.update_preview)
         self.font_combo.currentTextChanged.connect(self.update_preview)
         self.font_size_spin.valueChanged.connect(self.update_preview)
