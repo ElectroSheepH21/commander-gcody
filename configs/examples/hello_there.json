@@ -1,0 +1,24 @@
+{
+    "format": "commander_gcody_config",
+    "version": 1,
+    "board": {
+        "width_mm": 420.0,
+        "height_mm": 420.0,
+        "thickness_mm": 10.0
+    },
+    "text": {
+        "content": "Hello\nThere",
+        "font_family": "Times New Roman",
+        "font_size_mm": 69.0
+    },
+    "machine": {
+        "plunge_depth_mm": 0.5,
+        "lift_above_surface_mm": 5.0,
+        "xy_feed_mm_min": 1200,
+        "z_feed_mm_min": 300
+    },
+    "window": {
+        "width": 1180,
+        "height": 740
+    }
+}
