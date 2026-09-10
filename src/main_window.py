@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import (
@@ -11,7 +12,10 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QVBoxLayout,
     QWidget,
-    QLabel
+    QLabel,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
 )
 
 from board_preview import BoardPreview
@@ -87,11 +91,18 @@ class MainWindow(QMainWindow):
         info_form.addRow("G-code range:", self.range_label)
         info_form.addRow("Z down / up:", self.z_label)
         info_form.addRow("Fits on board:", self.fit_label)
+        
+        self.save_config_button = QPushButton("Save configuration...")
+        self.save_config_button.clicked.connect(self.save_config)
+        self.load_config_button = QPushButton("Load configuration...")
+        self.load_config_button.clicked.connect(self.load_config)
 
         col.addWidget(board)
         col.addWidget(text)
         col.addWidget(machine)
         col.addWidget(info)
+        col.addWidget(self.save_config_button)
+        col.addWidget(self.load_config_button)
         col.addStretch()
 
         layout.addWidget(controls)
@@ -153,6 +164,140 @@ class MainWindow(QMainWindow):
         else:
             self.fit_label.setText("No – text is too large")
             self.fit_label.setStyleSheet("color: red; font-weight: bold;")
+            
+    def get_config(self):
+        return {
+            "format": "commander_gcody_config",
+            "version": 1,
+            "board": {
+                "width_mm": self.width_spin.value(),
+                "height_mm": self.height_spin.value(),
+                "thickness_mm": self.thickness_spin.value(),
+            },
+            "text": {
+                "content": self.text_edit.toPlainText(),
+                "font_family": self.font_combo.currentText(),
+                "font_size_mm": self.font_size_spin.value(),
+            },
+            "machine": {
+                "plunge_depth_mm": self.plunge_spin.value(),
+                "lift_above_surface_mm": self.lift_spin.value(),
+                "xy_feed_mm_min": self.xy_feed_spin.value(),
+                "z_feed_mm_min": self.z_feed_spin.value(),
+            },
+            "window": {
+                "width": self.width(),
+                "height": self.height(),
+            },
+        }
+
+    def apply_config(self, config):
+        if config.get("format") != "commander_gcody_config":
+            raise ValueError("This file is not a Commander GCody configuration.")
+
+        board = config.get("board", {})
+        text = config.get("text", {})
+        machine = config.get("machine", config.get("plotter", {}))
+        window = config.get("window", {})
+
+        widgets = [
+            self.width_spin,
+            self.height_spin,
+            self.thickness_spin,
+            self.text_edit,
+            self.font_combo,
+            self.font_size_spin,
+            self.plunge_spin,
+            self.lift_spin,
+            self.xy_feed_spin,
+            self.z_feed_spin,
+        ]
+        for widget in widgets:
+            widget.blockSignals(True)
+
+        try:
+            self.width_spin.setValue(float(board.get("width_mm", self.width_spin.value())))
+            self.height_spin.setValue(float(board.get("height_mm", self.height_spin.value())))
+            self.thickness_spin.setValue(
+                float(board.get("thickness_mm", self.thickness_spin.value()))
+            )
+
+            self.text_edit.setPlainText(
+                str(text.get("content", self.text_edit.toPlainText()))
+            )
+
+            saved_font = str(text.get("font_family", self.font_combo.currentText()))
+            font_index = self.font_combo.findText(saved_font)
+            if font_index >= 0:
+                self.font_combo.setCurrentIndex(font_index)
+
+            self.font_size_spin.setValue(
+                float(text.get("font_size_mm", self.font_size_spin.value()))
+            )
+            self.plunge_spin.setValue(
+                float(machine.get("plunge_depth_mm", self.plunge_spin.value()))
+            )
+            self.lift_spin.setValue(
+                float(machine.get("lift_above_surface_mm", self.lift_spin.value()))
+            )
+            self.xy_feed_spin.setValue(
+                int(machine.get("xy_feed_mm_min", self.xy_feed_spin.value()))
+            )
+            self.z_feed_spin.setValue(
+                int(machine.get("z_feed_mm_min", self.z_feed_spin.value()))
+            )
+
+            self.resize(
+                max(500, int(window.get("width", self.width()))),
+                max(400, int(window.get("height", self.height()))),
+            )
+        finally:
+            for widget in widgets:
+                widget.blockSignals(False)
+
+        self.update_preview()
+
+    def save_config(self):
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save configuration",
+            "commander_gcody.json",
+            "JSON configuration (*.json);;All files (*.*)",
+        )
+        if not filename:
+            return
+        if not filename.lower().endswith(".json"):
+            filename += ".json"
+
+        try:
+            Path(filename).write_text(
+                json.dumps(self.get_config(), indent=4, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            QMessageBox.critical(self, "Error", f"Could not save configuration:\n{exc}")
+            return
+
+        QMessageBox.information(self, "Saved", f"Configuration saved:\n{filename}")
+
+    def load_config(self):
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load configuration",
+            "",
+            "JSON configuration (*.json);;All files (*.*)",
+        )
+        if not filename:
+            return
+
+        try:
+            config = json.loads(Path(filename).read_text(encoding="utf-8"))
+            self.apply_config(config)
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+            QMessageBox.critical(self, "Error", f"Could not load configuration:\n{exc}")
+            return
+
+        QMessageBox.information(self, "Loaded", f"Configuration loaded:\n{filename}")
 
     @staticmethod
     def _spin(minimum, maximum, value):
