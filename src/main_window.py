@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QLineEdit,
+    QPlainTextEdit,
     QMainWindow,
     QVBoxLayout,
     QWidget,
@@ -44,7 +44,9 @@ class MainWindow(QMainWindow):
 
         text = QGroupBox("Text")
         text_form = QFormLayout(text)
-        self.text_edit = QLineEdit("Hello")
+        self.text_edit = QPlainTextEdit("Hello")
+        self.text_edit.setFixedHeight(90)
+        self.text_edit.setTabChangesFocus(True)
         self.font_combo = QComboBox()
         self.font_combo.addItems(QFontDatabase.families())
         index = self.font_combo.findText(QFont().family())
@@ -96,7 +98,7 @@ class MainWindow(QMainWindow):
             self.width_spin.value(),
             self.height_spin.value(),
             self.thickness_spin.value(),
-            self.text_edit.text(),
+            self.text_edit.toPlainText(),
             self.font_combo.currentText(),
             self.font_size_spin.value(),
         )

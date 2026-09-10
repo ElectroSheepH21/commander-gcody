@@ -1,12 +1,18 @@
-from PySide6.QtGui import QFont, QPainterPath, QTransform
 from PySide6.QtCore import QRectF
+from PySide6.QtGui import QFont, QFontMetricsF, QPainterPath, QTransform
 
 
 def font_path_mm(text, family, font_size_mm):
     font = QFont(family)
     font.setPixelSize(max(1, int(round(font_size_mm * 10.0))))
+    line_height = QFontMetricsF(font).lineSpacing()
+
     path = QPainterPath()
-    path.addText(0.0, 0.0, font, text)
+    y = 0.0
+    for line in text.split("\n"):
+        path.addText(0.0, y, font, line)
+        y += line_height
+
     transform = QTransform()
     transform.scale(0.1, 0.1)
     return transform.map(path)
