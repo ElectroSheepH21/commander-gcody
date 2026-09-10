@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QTransform
-from font_path import normalized_text_path
+from font_path import normalized_text_path, centerline_text_path
 
 
 class BoardPreview(QWidget):
@@ -16,12 +16,14 @@ class BoardPreview(QWidget):
         self.font_family = ""
         self.font_size_mm = 20.0
         self.text_path = QPainterPath()
+        self.outline_path = QPainterPath()
         self.text_bounds = QRectF()
         self.text_x = 0.0
         self.text_y = 0.0
         self.marker_pos = None
         self.playback_segments = []
         self.current_t = 0.0
+        self.mode = "Outline"
 
     def set_marker(self, pos):
         self.marker_pos = pos
@@ -32,17 +34,22 @@ class BoardPreview(QWidget):
         self.current_t = current_t
         self.update()
 
-    def set_data(self, width_mm, height_mm, thickness_mm, text, font_family, font_size_mm):
+    def set_data(self, width_mm, height_mm, thickness_mm, text, font_family, font_size_mm, mode="Outline"):
         self.board_width = width_mm
         self.board_height = height_mm
         self.board_thickness = thickness_mm
         self.text = text
         self.font_family = font_family
         self.font_size_mm = font_size_mm
+        self.mode = mode
 
-        self.text_path, self.text_bounds = normalized_text_path(
-            text, font_family, font_size_mm
-        )
+        self.outline_path, self.text_bounds = normalized_text_path(
+            text, font_family, font_size_mm)
+        if mode == "Centerline":
+            self.text_path, _ = centerline_text_path(
+                text, font_family, font_size_mm)
+        else:
+            self.text_path = self.outline_path
         self.text_x = (self.board_width - self.text_bounds.width()) / 2.0
         self.text_y = (self.board_height - self.text_bounds.height()) / 2.0
         self.update()
@@ -82,18 +89,16 @@ class BoardPreview(QWidget):
             self.text_bounds.width() <= self.board_width
             and self.text_bounds.height() <= self.board_height
         )
-        color = QColor(20, 20, 20) if fits else QColor(190, 30, 30)
-        painter.setPen(QPen(color, 1.4))
+        outline_color = QColor(190, 30, 30) if not fits else QColor(20, 20, 20)
+        painter.setPen(QPen(outline_color, 1.4))
         painter.setBrush(Qt.NoBrush)
-        painter.drawPath(machine.map(self.text_path))
+        painter.drawPath(machine.map(self.outline_path))
+        if self.mode == "Centerline" and fits:
+            painter.setPen(QPen(QColor(40, 170, 60), 1.6))
+            painter.drawPath(machine.map(self.text_path))
         
         ox = x + w / 2.0
         oy = y + h / 2.0
-
-        color = QColor(20, 20, 20) if fits else QColor(190, 30, 30)
-        painter.setPen(QPen(color, 1.4))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawPath(machine.map(self.text_path))
 
         if self.playback_segments and self.current_t > 0:
             painter.setPen(QPen(QColor(220, 40, 40), 1.8))

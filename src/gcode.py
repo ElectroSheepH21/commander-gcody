@@ -17,9 +17,27 @@ def _move_time(dist, feed_mm_min, accel):
 def simulate_toolpath(gcode, rapid_feed_mm_min, accel_mm_s2):
     x = y = z = 0.0
     feed = 0.0
-    t = 0.0
+    t_state = [0.0]
     segments = []
     token = re.compile(r"([XYZF])(-?\d+\.?\d*)", re.I)
+
+    batch = []
+    batch_feed = [0.0]
+
+    def flush():
+        if not batch:
+            return
+        total_dist = sum(s[4] for s in batch)
+        total_time = _move_time(total_dist, batch_feed[0], accel_mm_s2)
+        elapsed = 0.0
+        for x0, y0, x1, y1, d in batch:
+            seg_t = total_time * (d / total_dist) if total_dist > 0 else 0.0
+            segments.append(
+                (t_state[0] + elapsed, t_state[0] + elapsed + seg_t,
+                 x0, y0, x1, y1, False))
+            elapsed += seg_t
+        t_state[0] += total_time
+        batch.clear()
 
     for raw in gcode.splitlines():
         line = raw.split(";")[0].strip().upper()
@@ -45,17 +63,28 @@ def simulate_toolpath(gcode, rapid_feed_mm_min, accel_mm_s2):
         if new_feed is not None:
             feed = new_feed
 
-        dist = math.sqrt((nx - x) ** 2 + (ny - y) ** 2 + (nz - z) ** 2)
         xy_moved = abs(nx - x) > 1e-9 or abs(ny - y) > 1e-9
-        is_rapid = code in ("G0", "G00") or not xy_moved
-        v = rapid_feed_mm_min if code in ("G0", "G00") else feed
-        dt = _move_time(dist, v, accel_mm_s2)
+        is_cut = code in ("G1", "G01") and xy_moved
 
-        if dt > 0.0 or dist > 0.0:
-            segments.append((t, t + dt, x, y, nx, ny, is_rapid))
-        t += dt
+        if is_cut:
+            if batch and batch_feed[0] != feed:
+                flush()
+            batch_feed[0] = feed
+            d = math.sqrt((nx - x) ** 2 + (ny - y) ** 2)
+            batch.append((x, y, nx, ny, d))
+        else:
+            flush()
+            dist = math.sqrt((nx - x) ** 2 + (ny - y) ** 2 + (nz - z) ** 2)
+            v = rapid_feed_mm_min if code in ("G0", "G00") else feed
+            dt = _move_time(dist, v, accel_mm_s2)
+            if dt > 0.0 or dist > 0.0:
+                segments.append(
+                    (t_state[0], t_state[0] + dt, x, y, nx, ny, True))
+            t_state[0] += dt
+
         x, y, z = nx, ny, nz
 
+    flush()
     return segments
 
 
