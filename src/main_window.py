@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from board_preview import BoardPreview
-from gcode import flatten_path, generate_gcode
+from gcode import flatten_path, generate_gcode, format_duration, estimate_seconds_from_gcode
 
 
 class MainWindow(QMainWindow):
@@ -75,10 +75,20 @@ class MainWindow(QMainWindow):
         self.z_feed_spin.setRange(1, 50000)
         self.z_feed_spin.setValue(300)
         self.z_feed_spin.setSuffix(" mm/min")
+        self.rapid_feed_spin = QSpinBox()
+        self.rapid_feed_spin.setRange(1, 50000)
+        self.rapid_feed_spin.setValue(3000)
+        self.rapid_feed_spin.setSuffix(" mm/min")
+        self.accel_spin = QSpinBox()
+        self.accel_spin.setRange(1, 20000)
+        self.accel_spin.setValue(500)
+        self.accel_spin.setSuffix(" mm/s²")
         machine_form.addRow("Plunge depth:", self.plunge_spin)
         machine_form.addRow("Lift above surface:", self.lift_spin)
         machine_form.addRow("XY feed rate:", self.xy_feed_spin)
         machine_form.addRow("Z feed rate:", self.z_feed_spin)
+        machine_form.addRow("Rapid feed rate:", self.rapid_feed_spin)
+        machine_form.addRow("Acceleration:", self.accel_spin)
 
         info = QGroupBox("Calculated values")
         info_form = QFormLayout(info)
@@ -87,11 +97,13 @@ class MainWindow(QMainWindow):
         self.range_label = QLabel("-")
         self.z_label = QLabel("-")
         self.fit_label = QLabel("-")
+        self.time_label = QLabel("-")
         info_form.addRow("Text width:", self.text_width_label)
         info_form.addRow("Text height:", self.text_height_label)
         info_form.addRow("G-code range:", self.range_label)
         info_form.addRow("Z down / up:", self.z_label)
         info_form.addRow("Fits on board:", self.fit_label)
+        info_form.addRow("Est. cut time:", self.time_label)
 
         self.save_config_button = QPushButton("Save configuration...")
         self.save_config_button.clicked.connect(self.save_config)
@@ -109,7 +121,6 @@ class MainWindow(QMainWindow):
         col.addWidget(self.export_button)
         col.addStretch()
 
-        layout.addWidget(controls)
         self.preview = BoardPreview()
         layout.addWidget(controls)
         layout.addWidget(self.preview, 1)
@@ -123,6 +134,10 @@ class MainWindow(QMainWindow):
 
         self.plunge_spin.valueChanged.connect(self.update_preview)
         self.lift_spin.valueChanged.connect(self.update_preview)
+        self.xy_feed_spin.valueChanged.connect(self.update_preview)
+        self.z_feed_spin.valueChanged.connect(self.update_preview)
+        self.rapid_feed_spin.valueChanged.connect(self.update_preview)
+        self.accel_spin.valueChanged.connect(self.update_preview)
 
         self.update_preview()
 
@@ -150,6 +165,13 @@ class MainWindow(QMainWindow):
         z_down = thickness - plunge
         z_up = thickness + self.lift_spin.value()
         self.z_label.setText(f"{z_down:.2f} / {z_up:.2f} mm")
+        try:
+            gcode = self.build_gcode()
+            seconds = estimate_seconds_from_gcode(
+                gcode, self.rapid_feed_spin.value(), self.accel_spin.value())
+        except ValueError:
+            seconds = 0.0
+        self.time_label.setText(format_duration(seconds))
 
         fits = (
             bounds.width() <= self.width_spin.value()
@@ -196,6 +218,8 @@ class MainWindow(QMainWindow):
                 "lift_above_surface_mm": self.lift_spin.value(),
                 "xy_feed_mm_min": self.xy_feed_spin.value(),
                 "z_feed_mm_min": self.z_feed_spin.value(),
+                "rapid_feed_mm_min": self.rapid_feed_spin.value(),
+                "accel_mm_s2": self.accel_spin.value(),
             },
             "window": {
                 "width": self.width(),
@@ -224,6 +248,8 @@ class MainWindow(QMainWindow):
             self.lift_spin,
             self.xy_feed_spin,
             self.z_feed_spin,
+            self.rapid_feed_spin,
+            self.accel_spin,
         ]
         for widget in widgets:
             widget.blockSignals(True)
@@ -261,6 +287,12 @@ class MainWindow(QMainWindow):
             )
             self.z_feed_spin.setValue(
                 int(machine.get("z_feed_mm_min", self.z_feed_spin.value()))
+            )
+            self.rapid_feed_spin.setValue(
+                int(machine.get("rapid_feed_mm_min", self.rapid_feed_spin.value()))
+            )
+            self.accel_spin.setValue(
+                int(machine.get("accel_mm_s2", self.accel_spin.value()))
             )
 
             self.resize(
