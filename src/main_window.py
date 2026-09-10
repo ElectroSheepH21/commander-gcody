@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import time
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
@@ -16,10 +18,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QFileDialog,
     QMessageBox,
+    QSlider,
 )
 
 from board_preview import BoardPreview
-from gcode import flatten_path, generate_gcode, format_duration, estimate_seconds_from_gcode
+from gcode import (
+    flatten_path, generate_gcode, format_duration,
+    estimate_seconds_from_gcode, simulate_toolpath, position_at,
+)
 
 
 class MainWindow(QMainWindow):
@@ -122,8 +128,44 @@ class MainWindow(QMainWindow):
         col.addStretch()
 
         self.preview = BoardPreview()
+        self.segments = []
+        self.speed_multiplier = 1.0
+        self.play_start_wall = 0.0
+        self.play_start_t = 0.0
+        self.play_timer = QTimer(self)
+        self.play_timer.setInterval(30)
+        self.play_timer.timeout.connect(self.on_play_tick)
+
+        self.play_button = QPushButton("▶")
+        self.play_button.setFixedWidth(36)
+        self.play_button.clicked.connect(self.toggle_playback)
+        self.speed_combo = QComboBox()
+        self.speed_combo.addItems(
+            ["0.5x", "1x", "2x", "5x", "10x", "25x", "50x", "100x"])
+        self.speed_combo.setCurrentText("1x")
+        self.speed_combo.currentTextChanged.connect(self.on_speed_change)
+        self.timeline_slider = QSlider(Qt.Horizontal)
+        self.timeline_slider.setRange(0, 1000)
+        self.timeline_slider.setValue(0)
+        self.timeline_label = QLabel("0.00 s / 0.00 s")
+        self.timeline_label.setMinimumWidth(160)
+        timeline_row = QHBoxLayout()
+        timeline_row.addWidget(self.play_button)
+        timeline_row.addWidget(self.speed_combo)
+        timeline_row.addWidget(self.timeline_slider, 1)
+        timeline_row.addWidget(self.timeline_label)
+
+        preview_container = QWidget()
+        preview_col = QVBoxLayout(preview_container)
+        preview_col.setContentsMargins(0, 0, 0, 0)
+        preview_col.addWidget(self.preview, 1)
+        preview_col.addLayout(timeline_row)
+
         layout.addWidget(controls)
-        layout.addWidget(self.preview, 1)
+        layout.addWidget(preview_container, 1)
+
+        self.timeline_slider.valueChanged.connect(self.on_timeline_change)
+        self.timeline_slider.sliderMoved.connect(self.on_slider_scrub)
 
         for spin in (self.width_spin, self.height_spin, self.thickness_spin):
             spin.valueChanged.connect(self.update_preview)
@@ -140,6 +182,71 @@ class MainWindow(QMainWindow):
         self.accel_spin.valueChanged.connect(self.update_preview)
 
         self.update_preview()
+
+    def on_timeline_change(self, value):
+        if not self.segments:
+            self.preview.set_marker(None)
+            self.timeline_label.setText(
+                f"{format_duration(0)} / {format_duration(0)}")
+            return
+        total = self.segments[-1][1]
+        t = (value / 1000.0) * total
+        x, y, is_rapid = position_at(self.segments, t)
+        self.preview.set_marker((x, y, is_rapid))
+        self.preview.set_playback(self.segments, t)
+        self.timeline_label.setText(
+            f"{format_duration(t)} / {format_duration(total)}")
+
+    def _current_t(self):
+        if not self.segments:
+            return 0.0
+        total = self.segments[-1][1]
+        return (self.timeline_slider.value() / 1000.0) * total
+
+    def toggle_playback(self):
+        if self.play_timer.isActive():
+            self.pause_playback()
+        else:
+            self.start_playback()
+
+    def start_playback(self):
+        if not self.segments:
+            return
+        total = self.segments[-1][1]
+        if self._current_t() >= total - 1e-6:
+            self.timeline_slider.setValue(0)
+        self.play_start_wall = time.monotonic()
+        self.play_start_t = self._current_t()
+        self.play_timer.start()
+        self.play_button.setText("⏸")
+
+    def pause_playback(self):
+        self.play_timer.stop()
+        self.play_button.setText("▶")
+
+    def on_play_tick(self):
+        if not self.segments:
+            self.pause_playback()
+            return
+        total = self.segments[-1][1]
+        elapsed = time.monotonic() - self.play_start_wall
+        new_t = self.play_start_t + elapsed * self.speed_multiplier
+        if new_t >= total:
+            self.timeline_slider.setValue(1000)
+            self.pause_playback()
+            return
+        self.timeline_slider.setValue(int((new_t / total) * 1000))
+
+    def on_slider_scrub(self, value):
+        if self.play_timer.isActive():
+            self.play_start_wall = time.monotonic()
+            self.play_start_t = self._current_t()
+
+    def on_speed_change(self, text):
+        self.speed_multiplier = float(text.rstrip("x"))
+        if self.play_timer.isActive():
+            self.play_start_wall = time.monotonic()
+            self.play_start_t = self._current_t()
 
     def update_preview(self):
         self.preview.set_data(
@@ -167,11 +274,19 @@ class MainWindow(QMainWindow):
         self.z_label.setText(f"{z_down:.2f} / {z_up:.2f} mm")
         try:
             gcode = self.build_gcode()
-            seconds = estimate_seconds_from_gcode(
+            self.segments = simulate_toolpath(
                 gcode, self.rapid_feed_spin.value(), self.accel_spin.value())
+            seconds = self.segments[-1][1] if self.segments else 0.0
         except ValueError:
+            self.segments = []
             seconds = 0.0
         self.time_label.setText(format_duration(seconds))
+        if not self.segments and self.play_timer.isActive():
+            self.pause_playback()
+        elif self.play_timer.isActive():
+            self.play_start_wall = time.monotonic()
+            self.play_start_t = self._current_t()
+        self.on_timeline_change(self.timeline_slider.value())
 
         fits = (
             bounds.width() <= self.width_spin.value()
