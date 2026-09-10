@@ -14,10 +14,11 @@ def _move_time(dist, feed_mm_min, accel):
     return 2.0 * math.sqrt(dist / accel)
 
 
-def estimate_seconds_from_gcode(gcode, rapid_feed_mm_min, accel_mm_s2):
+def simulate_toolpath(gcode, rapid_feed_mm_min, accel_mm_s2):
     x = y = z = 0.0
     feed = 0.0
-    seconds = 0.0
+    t = 0.0
+    segments = []
     token = re.compile(r"([XYZF])(-?\d+\.?\d*)", re.I)
 
     for raw in gcode.splitlines():
@@ -45,24 +46,49 @@ def estimate_seconds_from_gcode(gcode, rapid_feed_mm_min, accel_mm_s2):
             feed = new_feed
 
         dist = math.sqrt((nx - x) ** 2 + (ny - y) ** 2 + (nz - z) ** 2)
+        xy_moved = abs(nx - x) > 1e-9 or abs(ny - y) > 1e-9
+        is_rapid = code in ("G0", "G00") or not xy_moved
+        v = rapid_feed_mm_min if code in ("G0", "G00") else feed
+        dt = _move_time(dist, v, accel_mm_s2)
 
-        if code in ("G0", "G00"):
-            seconds += _move_time(dist, rapid_feed_mm_min, accel_mm_s2)
-        elif feed > 0:
-            seconds += _move_time(dist, feed, accel_mm_s2)
-
+        if dt > 0.0 or dist > 0.0:
+            segments.append((t, t + dt, x, y, nx, ny, is_rapid))
+        t += dt
         x, y, z = nx, ny, nz
 
-    return seconds
+    return segments
+
+
+def estimate_seconds_from_gcode(gcode, rapid_feed_mm_min, accel_mm_s2):
+    segments = simulate_toolpath(gcode, rapid_feed_mm_min, accel_mm_s2)
+    return segments[-1][1] if segments else 0.0
+
+
+def position_at(segments, t):
+    if not segments:
+        return (0.0, 0.0, True)
+    if t <= segments[0][0]:
+        s = segments[0]
+        return (s[2], s[3], s[6])
+    if t >= segments[-1][1]:
+        s = segments[-1]
+        return (s[4], s[5], s[6])
+    for t0, t1, x0, y0, x1, y1, is_rapid in segments:
+        if t0 <= t <= t1:
+            frac = (t - t0) / (t1 - t0) if t1 > t0 else 1.0
+            return (x0 + frac * (x1 - x0), y0 + frac * (y1 - y0), is_rapid)
+    s = segments[-1]
+    return (s[4], s[5], s[6])
 
 
 def format_duration(seconds):
-    if seconds < 60:
-        return f"{seconds:.2f} s"
-    if seconds < 3600:
-        minutes = seconds / 60.0
-        return f"{minutes:.2f} min"
-    return f"{seconds / 3600.0:.2f} h"
+    total = int(round(seconds))
+    if total < 3600:
+        m, s = divmod(total, 60)
+        return f"{m}:{s:02d}"
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}"
 
 
 def flatten_path(path):
