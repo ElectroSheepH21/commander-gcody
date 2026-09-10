@@ -65,15 +65,13 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.font_combo.setCurrentIndex(index)
         self.font_size_spin = self._spin(1.0, 500.0, 20.0)
+        
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Outline", "Centerline"])
         text_form.addRow("Text:", self.text_edit)
         text_form.addRow("Font:", self.font_combo)
         text_form.addRow("Font size:", self.font_size_spin)
-
-        mode = QGroupBox("Mode")
-        mode_form = QFormLayout(mode)
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Outline", "Centerline"])
-        mode_form.addRow("Toolpath:", self.mode_combo)
+        text_form.addRow("Toolpath:", self.mode_combo)
 
         machine = QGroupBox("Machine / Z axis")
         machine_form = QFormLayout(machine)
@@ -126,7 +124,6 @@ class MainWindow(QMainWindow):
 
         col.addWidget(board)
         col.addWidget(text)
-        col.addWidget(mode)
         col.addWidget(machine)
         col.addWidget(info)
         col.addWidget(self.save_config_button)
