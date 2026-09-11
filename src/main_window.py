@@ -22,10 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from board_preview import BoardPreview
-from gcode import (
-    flatten_path, generate_gcode, format_duration,
-    simulate_toolpath, position_at,
-)
+from gcode import Toolpath, flatten_path, generate_gcode, format_duration
 from paths import ICON_PATH
 
 
@@ -150,7 +147,7 @@ class MainWindow(QMainWindow):
         return group
 
     def _init_playback_state(self):
-        self.segments = []
+        self.toolpath = None
         self.speed_multiplier = 1.0
         self.play_start_wall = 0.0
         self.play_start_t = 0.0
@@ -207,23 +204,23 @@ class MainWindow(QMainWindow):
         self.accel_spin.valueChanged.connect(self.update_preview)
 
     def on_timeline_change(self, value):
-        if not self.segments:
+        if not self.toolpath or not self.toolpath.segments:
             self.preview.set_marker(None)
             self.timeline_label.setText(
                 f"{format_duration(0)} / {format_duration(0)}")
             return
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         t = (value / 1000.0) * total
-        x, y, is_rapid = position_at(self.segments, t)
+        x, y, is_rapid = self.toolpath.position_at(t)
         self.preview.set_marker((x, y, is_rapid))
-        self.preview.set_playback(self.segments, t)
+        self.preview.set_playback(self.toolpath.segments, t)
         self.timeline_label.setText(
             f"{format_duration(t)} / {format_duration(total)}")
 
     def _current_t(self):
-        if not self.segments:
+        if not self.toolpath:
             return 0.0
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         return (self.timeline_slider.value() / 1000.0) * total
 
     def toggle_playback(self):
@@ -233,9 +230,9 @@ class MainWindow(QMainWindow):
             self.start_playback()
 
     def start_playback(self):
-        if not self.segments:
+        if not self.toolpath:
             return
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         if self._current_t() >= total - 1e-6:
             self.timeline_slider.setValue(0)
         self.play_start_wall = time.monotonic()
@@ -248,10 +245,10 @@ class MainWindow(QMainWindow):
         self.play_button.setText("▶")
 
     def on_play_tick(self):
-        if not self.segments:
+        if not self.toolpath:
             self.pause_playback()
             return
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         elapsed = time.monotonic() - self.play_start_wall
         new_t = self.play_start_t + elapsed * self.speed_multiplier
         if new_t >= total:
@@ -298,14 +295,14 @@ class MainWindow(QMainWindow):
         self.z_label.setText(f"{z_down:.2f} / {z_up:.2f} mm")
         try:
             gcode = self.build_gcode()
-            self.segments = simulate_toolpath(
+            self.toolpath = Toolpath(
                 gcode, self.rapid_feed_spin.value(), self.accel_spin.value())
-            seconds = self.segments[-1][1] if self.segments else 0.0
+            seconds = self.toolpath.duration()
         except ValueError:
-            self.segments = []
+            self.toolpath = None
             seconds = 0.0
         self.time_label.setText(format_duration(seconds))
-        if not self.segments and self.play_timer.isActive():
+        if not self.toolpath and self.play_timer.isActive():
             self.pause_playback()
         elif self.play_timer.isActive():
             self.play_start_wall = time.monotonic()
