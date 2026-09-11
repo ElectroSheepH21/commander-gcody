@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from board_preview import BoardPreview
 from gcode import (
     flatten_path, generate_gcode, format_duration,
-    estimate_seconds_from_gcode, simulate_toolpath, position_at,
+    simulate_toolpath, position_at,
 )
 from paths import ICON_PATH
 

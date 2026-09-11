@@ -88,11 +88,6 @@ def simulate_toolpath(gcode, rapid_feed_mm_min, accel_mm_s2):
     return segments
 
 
-def estimate_seconds_from_gcode(gcode, rapid_feed_mm_min, accel_mm_s2):
-    segments = simulate_toolpath(gcode, rapid_feed_mm_min, accel_mm_s2)
-    return segments[-1][1] if segments else 0.0
-
-
 def position_at(segments, t):
     if not segments:
         return (0.0, 0.0, True)
