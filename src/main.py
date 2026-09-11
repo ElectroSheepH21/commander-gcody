@@ -10,6 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 ICON = ROOT / "res" / "app.ico"
 
 if __name__ == "__main__":
+    try:
+        from ctypes import windll
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "commander.gcody.app")
+    except (ImportError, AttributeError, OSError):
+        pass
+
     app = QApplication(sys.argv)
     if ICON.exists():
         app.setWindowIcon(QIcon(str(ICON)))
