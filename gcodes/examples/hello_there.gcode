@@ -5,6 +5,7 @@
 ; Text bounding box: 157.692 x 125.253 mm
 ; Board surface Z: 10.000 mm
 ; Plunge depth: 0.500 mm
+; Passes: 1
 ; Z down: 9.500 mm
 ; Z up: 15.000 mm
 ; XY origin: center of board/text
