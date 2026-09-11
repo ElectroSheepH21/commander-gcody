@@ -109,14 +109,27 @@ class BoardPreview(QWidget):
             painter.setPen(QPen(QColor(40, 170, 60), 1.6))
             painter.drawPath(machine.map(self.text_path))
 
+    # Earlier passes over a line fade in; only the final pass draws fully
+    # opaque, so a line cut once but not yet to full depth stays visibly
+    # lighter than a finished one, while still standing out against the board.
+    _MIN_PASS_ALPHA = 90
+
+    @classmethod
+    def _pass_alpha(cls, pass_index, total_passes):
+        if total_passes <= 1:
+            return 255
+        frac = pass_index / total_passes
+        return int(cls._MIN_PASS_ALPHA + (255 - cls._MIN_PASS_ALPHA) * frac)
+
     def _draw_playback_trail(self, painter, ox, oy, scale):
         if not self.playback_segments or self.current_t <= 0:
             return
-        painter.setPen(QPen(QColor(220, 40, 40), 1.8))
         painter.setBrush(Qt.NoBrush)
-        for t0, t1, x0, y0, x1, y1, is_rapid in self.playback_segments:
+        for t0, t1, x0, y0, x1, y1, is_rapid, pass_index, total_passes in self.playback_segments:
             if is_rapid or t0 >= self.current_t:
                 continue
+            alpha = self._pass_alpha(pass_index, total_passes)
+            painter.setPen(QPen(QColor(220, 40, 40, alpha), 1.8))
             px0 = ox + x0 * scale
             py0 = oy - y0 * scale
             if t1 <= self.current_t:
