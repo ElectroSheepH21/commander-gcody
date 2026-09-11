@@ -22,40 +22,67 @@ from PySide6.QtWidgets import (
 )
 
 from board_preview import BoardPreview
-from gcode import (
-    flatten_path, generate_gcode, format_duration,
-    estimate_seconds_from_gcode, simulate_toolpath, position_at,
-)
+from gcode import Toolpath, flatten_path, generate_gcode, format_duration
+from paths import ICON_PATH
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Commander GCody")
-        icon = Path(__file__).resolve().parents[1] / "res" / "app.ico"
-        if icon.exists():
-            self.setWindowIcon(QIcon(str(icon)))
-        self.resize(1050, 650)
+        self._setup_window()
 
         root = QWidget()
         self.setCentralWidget(root)
         layout = QHBoxLayout(root)
 
+        layout.addWidget(self._build_controls_column())
+        self._init_playback_state()
+        layout.addWidget(self._build_preview_area(), 1)
+
+        self._connect_signals()
+        self.update_preview()
+
+    def _setup_window(self):
+        self.setWindowTitle("Commander GCody")
+        if ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(ICON_PATH)))
+        self.resize(1050, 650)
+
+    def _build_controls_column(self):
         controls = QWidget()
         controls.setMaximumWidth(350)
         col = QVBoxLayout(controls)
+        col.addWidget(self._build_board_group())
+        col.addWidget(self._build_text_group())
+        col.addWidget(self._build_machine_group())
+        col.addWidget(self._build_info_group())
 
-        board = QGroupBox("Board")
-        board_form = QFormLayout(board)
+        self.save_config_button = QPushButton("Save configuration...")
+        self.save_config_button.clicked.connect(self.save_config)
+        self.load_config_button = QPushButton("Load configuration...")
+        self.load_config_button.clicked.connect(self.load_config)
+        self.export_button = QPushButton("Save G-code...")
+        self.export_button.clicked.connect(self.export_gcode)
+        col.addWidget(self.save_config_button)
+        col.addWidget(self.load_config_button)
+        col.addWidget(self.export_button)
+        col.addStretch()
+        return controls
+
+    def _build_board_group(self):
+        group = QGroupBox("Board")
+        form = QFormLayout(group)
         self.width_spin = self._spin(1.0, 5000.0, 200.0)
         self.height_spin = self._spin(1.0, 5000.0, 100.0)
         self.thickness_spin = self._spin(0.1, 500.0, 10.0)
-        board_form.addRow("Width:", self.width_spin)
-        board_form.addRow("Height:", self.height_spin)
-        board_form.addRow("Thickness:", self.thickness_spin)
+        form.addRow("Width:", self.width_spin)
+        form.addRow("Height:", self.height_spin)
+        form.addRow("Thickness:", self.thickness_spin)
+        return group
 
-        text = QGroupBox("Text")
-        text_form = QFormLayout(text)
+    def _build_text_group(self):
+        group = QGroupBox("Text")
+        form = QFormLayout(group)
         self.text_edit = QPlainTextEdit("Hello")
         self.text_edit.setFixedHeight(90)
         self.text_edit.setTabChangesFocus(True)
@@ -65,16 +92,17 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.font_combo.setCurrentIndex(index)
         self.font_size_spin = self._spin(1.0, 500.0, 20.0)
-        
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["Outline", "Centerline"])
-        text_form.addRow("Text:", self.text_edit)
-        text_form.addRow("Font:", self.font_combo)
-        text_form.addRow("Font size:", self.font_size_spin)
-        text_form.addRow("Toolpath:", self.mode_combo)
+        form.addRow("Text:", self.text_edit)
+        form.addRow("Font:", self.font_combo)
+        form.addRow("Font size:", self.font_size_spin)
+        form.addRow("Toolpath:", self.mode_combo)
+        return group
 
-        machine = QGroupBox("Machine / Z axis")
-        machine_form = QFormLayout(machine)
+    def _build_machine_group(self):
+        group = QGroupBox("Machine / Z axis")
+        form = QFormLayout(group)
         self.plunge_spin = self._spin(0.0, 100.0, 0.5)
         self.lift_spin = self._spin(0.1, 100.0, 5.0)
         self.xy_feed_spin = QSpinBox()
@@ -93,46 +121,33 @@ class MainWindow(QMainWindow):
         self.accel_spin.setRange(1, 20000)
         self.accel_spin.setValue(500)
         self.accel_spin.setSuffix(" mm/s²")
-        machine_form.addRow("Plunge depth:", self.plunge_spin)
-        machine_form.addRow("Lift above surface:", self.lift_spin)
-        machine_form.addRow("XY feed rate:", self.xy_feed_spin)
-        machine_form.addRow("Z feed rate:", self.z_feed_spin)
-        machine_form.addRow("Rapid feed rate:", self.rapid_feed_spin)
-        machine_form.addRow("Acceleration:", self.accel_spin)
+        form.addRow("Plunge depth:", self.plunge_spin)
+        form.addRow("Lift above surface:", self.lift_spin)
+        form.addRow("XY feed rate:", self.xy_feed_spin)
+        form.addRow("Z feed rate:", self.z_feed_spin)
+        form.addRow("Rapid feed rate:", self.rapid_feed_spin)
+        form.addRow("Acceleration:", self.accel_spin)
+        return group
 
-        info = QGroupBox("Calculated values")
-        info_form = QFormLayout(info)
+    def _build_info_group(self):
+        group = QGroupBox("Calculated values")
+        form = QFormLayout(group)
         self.text_width_label = QLabel("-")
         self.text_height_label = QLabel("-")
         self.range_label = QLabel("-")
         self.z_label = QLabel("-")
         self.fit_label = QLabel("-")
         self.time_label = QLabel("-")
-        info_form.addRow("Text width:", self.text_width_label)
-        info_form.addRow("Text height:", self.text_height_label)
-        info_form.addRow("G-code range:", self.range_label)
-        info_form.addRow("Z down / up:", self.z_label)
-        info_form.addRow("Fits on board:", self.fit_label)
-        info_form.addRow("Est. cut time:", self.time_label)
+        form.addRow("Text width:", self.text_width_label)
+        form.addRow("Text height:", self.text_height_label)
+        form.addRow("G-code range:", self.range_label)
+        form.addRow("Z down / up:", self.z_label)
+        form.addRow("Fits on board:", self.fit_label)
+        form.addRow("Est. cut time:", self.time_label)
+        return group
 
-        self.save_config_button = QPushButton("Save configuration...")
-        self.save_config_button.clicked.connect(self.save_config)
-        self.load_config_button = QPushButton("Load configuration...")
-        self.load_config_button.clicked.connect(self.load_config)
-        self.export_button = QPushButton("Save G-code...")
-        self.export_button.clicked.connect(self.export_gcode)
-
-        col.addWidget(board)
-        col.addWidget(text)
-        col.addWidget(machine)
-        col.addWidget(info)
-        col.addWidget(self.save_config_button)
-        col.addWidget(self.load_config_button)
-        col.addWidget(self.export_button)
-        col.addStretch()
-
-        self.preview = BoardPreview()
-        self.segments = []
+    def _init_playback_state(self):
+        self.toolpath = None
         self.speed_multiplier = 1.0
         self.play_start_wall = 0.0
         self.play_start_t = 0.0
@@ -140,6 +155,8 @@ class MainWindow(QMainWindow):
         self.play_timer.setInterval(30)
         self.play_timer.timeout.connect(self.on_play_tick)
 
+    def _build_preview_area(self):
+        self.preview = BoardPreview()
         self.play_button = QPushButton("▶")
         self.play_button.setFixedWidth(36)
         self.play_button.clicked.connect(self.toggle_playback)
@@ -153,21 +170,21 @@ class MainWindow(QMainWindow):
         self.timeline_slider.setValue(0)
         self.timeline_label = QLabel("0.00 s / 0.00 s")
         self.timeline_label.setMinimumWidth(160)
+
         timeline_row = QHBoxLayout()
         timeline_row.addWidget(self.play_button)
         timeline_row.addWidget(self.speed_combo)
         timeline_row.addWidget(self.timeline_slider, 1)
         timeline_row.addWidget(self.timeline_label)
 
-        preview_container = QWidget()
-        preview_col = QVBoxLayout(preview_container)
-        preview_col.setContentsMargins(0, 0, 0, 0)
-        preview_col.addWidget(self.preview, 1)
-        preview_col.addLayout(timeline_row)
+        container = QWidget()
+        col = QVBoxLayout(container)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.addWidget(self.preview, 1)
+        col.addLayout(timeline_row)
+        return container
 
-        layout.addWidget(controls)
-        layout.addWidget(preview_container, 1)
-
+    def _connect_signals(self):
         self.timeline_slider.valueChanged.connect(self.on_timeline_change)
         self.timeline_slider.sliderMoved.connect(self.on_slider_scrub)
 
@@ -177,7 +194,6 @@ class MainWindow(QMainWindow):
         self.text_edit.textChanged.connect(self.update_preview)
         self.font_combo.currentTextChanged.connect(self.update_preview)
         self.font_size_spin.valueChanged.connect(self.update_preview)
-        
         self.mode_combo.currentTextChanged.connect(self.update_preview)
 
         self.plunge_spin.valueChanged.connect(self.update_preview)
@@ -187,26 +203,24 @@ class MainWindow(QMainWindow):
         self.rapid_feed_spin.valueChanged.connect(self.update_preview)
         self.accel_spin.valueChanged.connect(self.update_preview)
 
-        self.update_preview()
-
     def on_timeline_change(self, value):
-        if not self.segments:
+        if not self.toolpath or not self.toolpath.segments:
             self.preview.set_marker(None)
             self.timeline_label.setText(
                 f"{format_duration(0)} / {format_duration(0)}")
             return
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         t = (value / 1000.0) * total
-        x, y, is_rapid = position_at(self.segments, t)
+        x, y, is_rapid = self.toolpath.position_at(t)
         self.preview.set_marker((x, y, is_rapid))
-        self.preview.set_playback(self.segments, t)
+        self.preview.set_playback(self.toolpath.segments, t)
         self.timeline_label.setText(
             f"{format_duration(t)} / {format_duration(total)}")
 
     def _current_t(self):
-        if not self.segments:
+        if not self.toolpath:
             return 0.0
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         return (self.timeline_slider.value() / 1000.0) * total
 
     def toggle_playback(self):
@@ -216,9 +230,9 @@ class MainWindow(QMainWindow):
             self.start_playback()
 
     def start_playback(self):
-        if not self.segments:
+        if not self.toolpath:
             return
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         if self._current_t() >= total - 1e-6:
             self.timeline_slider.setValue(0)
         self.play_start_wall = time.monotonic()
@@ -231,10 +245,10 @@ class MainWindow(QMainWindow):
         self.play_button.setText("▶")
 
     def on_play_tick(self):
-        if not self.segments:
+        if not self.toolpath:
             self.pause_playback()
             return
-        total = self.segments[-1][1]
+        total = self.toolpath.duration()
         elapsed = time.monotonic() - self.play_start_wall
         new_t = self.play_start_t + elapsed * self.speed_multiplier
         if new_t >= total:
@@ -281,14 +295,14 @@ class MainWindow(QMainWindow):
         self.z_label.setText(f"{z_down:.2f} / {z_up:.2f} mm")
         try:
             gcode = self.build_gcode()
-            self.segments = simulate_toolpath(
+            self.toolpath = Toolpath(
                 gcode, self.rapid_feed_spin.value(), self.accel_spin.value())
-            seconds = self.segments[-1][1] if self.segments else 0.0
+            seconds = self.toolpath.duration()
         except ValueError:
-            self.segments = []
+            self.toolpath = None
             seconds = 0.0
         self.time_label.setText(format_duration(seconds))
-        if not self.segments and self.play_timer.isActive():
+        if not self.toolpath and self.play_timer.isActive():
             self.pause_playback()
         elif self.play_timer.isActive():
             self.play_start_wall = time.monotonic()

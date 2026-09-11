@@ -1,18 +1,23 @@
 import sys
-from pathlib import Path
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from main_window import MainWindow
 
-ROOT = Path(__file__).resolve().parents[1]
-ICON = ROOT / "res" / "app.ico"
+from paths import ICON_PATH
 
 if __name__ == "__main__":
+    try:
+        from ctypes import windll
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "commander.gcody.app")
+    except (ImportError, AttributeError, OSError):
+        pass
+
     app = QApplication(sys.argv)
-    if ICON.exists():
-        app.setWindowIcon(QIcon(str(ICON)))
+    if ICON_PATH.exists():
+        app.setWindowIcon(QIcon(str(ICON_PATH)))
 
     window = MainWindow()
     window.show()
