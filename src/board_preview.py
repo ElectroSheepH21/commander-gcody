@@ -1,8 +1,8 @@
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen
-from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QTransform
-from font_path import normalized_text_path, centerline_text_path
+from PySide6.QtWidgets import QWidget
+from text_path import normalized_text_path
+from centerline import centerline_text_path
 
 
 class BoardPreview(QWidget):
@@ -71,14 +71,8 @@ class BoardPreview(QWidget):
         h = self.board_height * scale
         x = (self.width() - w) / 2.0
         y = (self.height() - h) / 2.0
-
-        painter.setPen(QPen(QColor(255, 255, 255), 1))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
-
-        painter.setPen(QPen(QColor(60, 60, 60), 2))
-        painter.setBrush(QBrush(QColor(222, 196, 147)))
-        painter.drawRect(QRectF(x, y, w, h))
+        ox = x + w / 2.0
+        oy = y + h / 2.0
 
         machine = QTransform()
         machine.translate(x, y + h)
@@ -89,6 +83,24 @@ class BoardPreview(QWidget):
             self.text_bounds.width() <= self.board_width
             and self.text_bounds.height() <= self.board_height
         )
+
+        self._draw_board(painter, x, y, w, h)
+        self._draw_text_paths(painter, machine, fits)
+        self._draw_playback_trail(painter, ox, oy, scale)
+        self._draw_origin(painter, ox, oy)
+        self._draw_board_label(painter, x, y, w)
+        self._draw_bounding_box_and_marker(painter, x, y, h, ox, oy, scale)
+
+    def _draw_board(self, painter, x, y, w, h):
+        painter.setPen(QPen(QColor(255, 255, 255), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+
+        painter.setPen(QPen(QColor(60, 60, 60), 2))
+        painter.setBrush(QBrush(QColor(222, 196, 147)))
+        painter.drawRect(QRectF(x, y, w, h))
+
+    def _draw_text_paths(self, painter, machine, fits):
         outline_color = QColor(190, 30, 30) if not fits else QColor(20, 20, 20)
         painter.setPen(QPen(outline_color, 1.4))
         painter.setBrush(Qt.NoBrush)
@@ -96,34 +108,35 @@ class BoardPreview(QWidget):
         if self.mode == "Centerline" and fits:
             painter.setPen(QPen(QColor(40, 170, 60), 1.6))
             painter.drawPath(machine.map(self.text_path))
-        
-        ox = x + w / 2.0
-        oy = y + h / 2.0
 
-        if self.playback_segments and self.current_t > 0:
-            painter.setPen(QPen(QColor(220, 40, 40), 1.8))
-            painter.setBrush(Qt.NoBrush)
-            for t0, t1, x0, y0, x1, y1, is_rapid in self.playback_segments:
-                if is_rapid or t0 >= self.current_t:
-                    continue
-                px0 = ox + x0 * scale
-                py0 = oy - y0 * scale
-                if t1 <= self.current_t:
-                    px1 = ox + x1 * scale
-                    py1 = oy - y1 * scale
-                else:
-                    frac = (self.current_t - t0) / (t1 - t0) if t1 > t0 else 1.0
-                    ix = x0 + frac * (x1 - x0)
-                    iy = y0 + frac * (y1 - y0)
-                    px1 = ox + ix * scale
-                    py1 = oy - iy * scale
-                painter.drawLine(QPointF(px0, py0), QPointF(px1, py1))
+    def _draw_playback_trail(self, painter, ox, oy, scale):
+        if not self.playback_segments or self.current_t <= 0:
+            return
+        painter.setPen(QPen(QColor(220, 40, 40), 1.8))
+        painter.setBrush(Qt.NoBrush)
+        for t0, t1, x0, y0, x1, y1, is_rapid in self.playback_segments:
+            if is_rapid or t0 >= self.current_t:
+                continue
+            px0 = ox + x0 * scale
+            py0 = oy - y0 * scale
+            if t1 <= self.current_t:
+                px1 = ox + x1 * scale
+                py1 = oy - y1 * scale
+            else:
+                frac = (self.current_t - t0) / (t1 - t0) if t1 > t0 else 1.0
+                ix = x0 + frac * (x1 - x0)
+                iy = y0 + frac * (y1 - y0)
+                px1 = ox + ix * scale
+                py1 = oy - iy * scale
+            painter.drawLine(QPointF(px0, py0), QPointF(px1, py1))
 
+    def _draw_origin(self, painter, ox, oy):
         painter.setPen(QPen(QColor(60, 60, 60), 2))
         painter.drawLine(QPointF(ox - 9, oy), QPointF(ox + 9, oy))
         painter.drawLine(QPointF(ox, oy - 9), QPointF(ox, oy + 9))
         painter.drawText(QPointF(ox + 12, oy - 8), "X0 / Y0")
 
+    def _draw_board_label(self, painter, x, y, w):
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(
             QRectF(x, y - 28, w, 22),
@@ -132,37 +145,43 @@ class BoardPreview(QWidget):
             f"{self.board_thickness:.1f} mm",
         )
 
-        if not self.text_path.isEmpty():
-            bb = QRectF(
-                self.text_x,
-                self.text_y,
-                self.text_bounds.width(),
-                self.text_bounds.height(),
-            )
-            bb_on_widget = QTransform()
-            bb_on_widget.translate(x, y + h)
-            bb_on_widget.scale(scale, -scale)
-            painter.setPen(QPen(QColor(70, 160, 255), 1, Qt.DashLine))
+    def _draw_bounding_box_and_marker(self, painter, x, y, h, ox, oy, scale):
+        if self.text_path.isEmpty():
+            return
+
+        bb = QRectF(
+            self.text_x,
+            self.text_y,
+            self.text_bounds.width(),
+            self.text_bounds.height(),
+        )
+        bb_on_widget = QTransform()
+        bb_on_widget.translate(x, y + h)
+        bb_on_widget.scale(scale, -scale)
+        painter.setPen(QPen(QColor(70, 160, 255), 1, Qt.DashLine))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(bb_on_widget.mapRect(bb))
+
+        if self.marker_pos is None:
+            return
+
+        gx, gy, is_rapid = self.marker_pos
+        mx = ox + gx * scale
+        my = oy - gy * scale
+        size = 10.0 * 0.7071
+        gap = 4.0 * 0.7071
+        dot_r = 1.8
+        color = QColor(220, 40, 40, 128) if is_rapid else QColor(220, 40, 40)
+        painter.setPen(QPen(color, 2.0))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLine(QPointF(mx - size, my - size), QPointF(mx - gap, my - gap))
+        painter.drawLine(QPointF(mx + gap, my + gap), QPointF(mx + size, my + size))
+        painter.drawLine(QPointF(mx - size, my + size), QPointF(mx - gap, my + gap))
+        painter.drawLine(QPointF(mx + gap, my - gap), QPointF(mx + size, my - size))
+        if not is_rapid:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(color))
+            painter.drawEllipse(QPointF(mx, my), dot_r, dot_r)
+            painter.setPen(QPen(color, 1.5))
             painter.setBrush(Qt.NoBrush)
-            painter.drawRect(bb_on_widget.mapRect(bb))
-            if self.marker_pos is not None:
-                gx, gy, is_rapid = self.marker_pos
-                mx = ox + gx * scale
-                my = oy - gy * scale
-                size = 10.0 * 0.7071
-                gap = 4.0 * 0.7071
-                dot_r = 1.8
-                color = QColor(220, 40, 40, 128) if is_rapid else QColor(220, 40, 40)
-                painter.setPen(QPen(color, 2.0))
-                painter.setBrush(Qt.NoBrush)
-                painter.drawLine(QPointF(mx - size, my - size), QPointF(mx - gap, my - gap))
-                painter.drawLine(QPointF(mx + gap, my + gap), QPointF(mx + size, my + size))
-                painter.drawLine(QPointF(mx - size, my + size), QPointF(mx - gap, my + gap))
-                painter.drawLine(QPointF(mx + gap, my - gap), QPointF(mx + size, my - size))
-                if not is_rapid:
-                    painter.setPen(Qt.NoPen)
-                    painter.setBrush(QBrush(color))
-                    painter.drawEllipse(QPointF(mx, my), dot_r, dot_r)
-                    painter.setPen(QPen(color, 1.5))
-                    painter.setBrush(Qt.NoBrush)
-                    painter.drawEllipse(QPointF(mx, my), size, size)
+            painter.drawEllipse(QPointF(mx, my), size, size)
