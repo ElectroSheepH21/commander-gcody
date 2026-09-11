@@ -1,7 +1,6 @@
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen
-from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QTransform
+from PySide6.QtWidgets import QWidget
 from font_path import normalized_text_path, centerline_text_path
 
 
