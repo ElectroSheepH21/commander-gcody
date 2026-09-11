@@ -132,7 +132,8 @@ def generate_gcode(
     lines = list(comments)
     if lines and lines[-1] != "":
         lines.append("")
-
+        
+    # Setup commands (millimeters, absolute positioning, lift to safe height)
     lines.extend(
         [
             "G21 ; millimeters",
@@ -141,20 +142,29 @@ def generate_gcode(
             "",
         ]
     )
-
+    
+    # One plunge-cut-lift cycle per polyline
     for poly in toolpaths:
+        # Rapid move to the start point of the polyline
         first = poly[0]
         x0 = offset_x + first.x()
         y0 = offset_y + first.y()
         lines.append(f"G0 X{x0:.3f} Y{y0:.3f}")
+        
+        # Controlled plunge into the material at feed_z rate
         lines.append(f"G1 Z{z_down:.3f} F{feed_z}")
+        
+        # Controlled cutting along the polyline at feed_xy rate
         for point in poly[1:]:
             x = offset_x + point.x()
             y = offset_y + point.y()
             lines.append(f"G1 X{x:.3f} Y{y:.3f} F{feed_xy}")
+            
+        # Controlled lift back to safe height at feed_z rate
         lines.append(f"G0 Z{z_up:.3f}")
         lines.append("")
-
+        
+    # Ensure the tool is lifted and return to origin, then end the program
     lines.extend(
         [
             f"G0 Z{z_up:.3f}",
