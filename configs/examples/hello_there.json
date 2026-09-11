@@ -14,6 +14,7 @@
     },
     "machine": {
         "plunge_depth_mm": 0.5,
+        "max_stepdown_mm": 0.5,
         "lift_above_surface_mm": 5.0,
         "xy_feed_mm_min": 1200,
         "z_feed_mm_min": 300,
@@ -22,6 +23,6 @@
     },
     "window": {
         "width": 1180,
-        "height": 890
+        "height": 944
     }
 }
