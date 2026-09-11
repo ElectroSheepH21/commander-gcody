@@ -26,6 +26,7 @@ from gcode import (
     flatten_path, generate_gcode, format_duration,
     estimate_seconds_from_gcode, simulate_toolpath, position_at,
 )
+from paths import ICON_PATH
 
 
 class MainWindow(QMainWindow):
@@ -46,9 +47,8 @@ class MainWindow(QMainWindow):
 
     def _setup_window(self):
         self.setWindowTitle("Commander GCody")
-        icon = Path(__file__).resolve().parents[1] / "res" / "app.ico"
-        if icon.exists():
-            self.setWindowIcon(QIcon(str(icon)))
+        if ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1050, 650)
 
     def _build_controls_column(self):
