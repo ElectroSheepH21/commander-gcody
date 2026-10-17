@@ -1,4 +1,4 @@
-# Commander GCody
-<img width="2000" height="992" alt="Commander_GCody" src="https://github.com/user-attachments/assets/af18e546-9191-4d6a-b697-559b42ab8987" />
+# CommanderGCody
+<img width="2000" height="992" alt="commander_gcody_title" src="https://github.com/user-attachments/assets/66f229fa-8c57-41ae-81ce-d8b872f74e3f" />
 
 
